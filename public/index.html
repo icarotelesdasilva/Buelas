@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Call App</title>
+  <style>
+    video {
+      width: 45%;
+      margin: 10px;
+      border: 1px solid black;
+    }
+    #nickname-section, #video-call-section {
+      display: none;
+    }
+    #nickname-section {
+      text-align: center;
+      margin-top: 50px;
+    }
+  </style>
+</head>
+<body>
+  <div id="nickname-section">
+    <h2>Insira seu Nickname</h2>
+    <input type="text" id="nickname-input" placeholder="Seu Nickname">
+    <button id="start-call">Entrar na chamada</button>
+  </div>
+
+  <div id="video-call-section">
+    <h2>Video Call App</h2>
+    <div>
+      <button id="join-room">Entrar na sala</button>
+      <input type="text" id="room-id" placeholder="ID da Sala">
+    </div>
+    <div>
+      <video id="local-video" autoplay muted></video>
+      <video id="remote-video" autoplay></video>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const localVideo = document.getElementById('local-video');
+    const remoteVideo = document.getElementById('remote-video');
+    const joinRoomButton = document.getElementById('join-room');
+    const roomInput = document.getElementById('room-id');
+    const nicknameSection = document.getElementById('nickname-section');
+    const videoCallSection = document.getElementById('video-call-section');
+    const startCallButton = document.getElementById('start-call');
+    const nicknameInput = document.getElementById('nickname-input');
+
+    let localStream;
+    let peerConnection;
+    const room = roomInput.value || "test-room"; // Room ID
+
+    // Exibe a tela de nickname e esconde a chamada
+    nicknameSection.style.display = 'block';
+
+    // Função para acessar o vídeo local
+    async function startLocalVideo() {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localVideo.srcObject = localStream;
+        // Corrige a câmera invertida
+        localVideo.style.transform = "scaleX(-1)";
+      } catch (err) {
+        console.error('Erro ao acessar mídia local:', err);
+      }
+    }
+
+    // Quando o usuário entra na chamada
+    startCallButton.addEventListener('click', () => {
+      const nickname = nicknameInput.value.trim();
+      if (nickname) {
+        // Esconde a tela de nickname e mostra a de chamada
+        nicknameSection.style.display = 'none';
+        videoCallSection.style.display = 'block';
+        socket.emit('join-room', room);
+        startLocalVideo();
+      } else {
+        alert("Por favor, insira um nickname.");
+      }
+    });
+
+    // Configurar conexão peer
+    function createPeerConnection() {
+      const configuration = {
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      };
+
+      peerConnection = new RTCPeerConnection(configuration);
+
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit('new-ice-candidate', event.candidate, room);
+        }
+      };
+
+      peerConnection.ontrack = (event) => {
+        remoteVideo.srcObject = event.streams[0];
+      };
+
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+    }
+
+    // Enviar oferta de vídeo
+    async function sendOffer() {
+      createPeerConnection();
+
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+
+      socket.emit('video-offer', offer, room);
+    }
+
+    // Receber e responder oferta de vídeo
+    socket.on('video-offer', async (offer) => {
+      createPeerConnection();
+
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+
+      socket.emit('video-answer', answer, room);
+    });
+
+    // Receber resposta de vídeo
+    socket.on('video-answer', (answer) => {
+      peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+    });
+
+    // Receber ICE candidate
+    socket.on('new-ice-candidate', (candidate) => {
+      peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    });
+  </script>
+</body>
+</html>
