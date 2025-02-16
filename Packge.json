@@ -1,0 +1,14 @@
+{
+  "name": "video-call-app",
+  "version": "1.0.0",
+  "description": "Aplicativo de videochamada simples",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js", 
+    "build": "echo 'No build step required'" 
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "socket.io": "^4.0.1"
+  }
+}
